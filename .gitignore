@@ -1,0 +1,16 @@
+# Local-only planning (daily push plan, council notes, Arabic study guide)
+/planning/
+/_to_delete/
+/*.tar
+
+# Original planning files kept next to the project, not part of the repo
+/خطة تنفيذ*.md
+/خطة تنفيذ*.pdf
+/Mawid — Booking App.html
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
