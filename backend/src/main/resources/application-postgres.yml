@@ -1,0 +1,9 @@
+# docker compose up: PostgreSQL instead of the in-memory H2 database.
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/mawid}
+    username: ${DATABASE_USER:mawid}
+    password: ${DATABASE_PASSWORD:mawid}
+  h2:
+    console:
+      enabled: false

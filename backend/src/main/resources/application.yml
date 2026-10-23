@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: mawid-api
+  datasource:
+    url: ${DATABASE_URL:jdbc:h2:mem:mawid;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE}
+    username: ${DATABASE_USER:sa}
+    password: ${DATABASE_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: ${DDL_AUTO:update}
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  h2:
+    console:
+      enabled: ${H2_CONSOLE:true}
+  jackson:
+    default-property-inclusion: always
+
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+
+mawid:
+  auth:
+    # Override in production with a long random value (MAWID_TOKEN_SECRET).
+    token-secret: ${MAWID_TOKEN_SECRET:dev-only-secret-change-me-0123456789abcdef}
+    token-ttl: 30d
+    # Demo: this code always works and /auth/demo is open. Set MAWID_DEMO_CODE= (empty) in production.
+    demo-code: ${MAWID_DEMO_CODE:123456}
+  seed:
+    enabled: ${MAWID_SEED:true}
+  reminders:
+    enabled: true
+    interval-ms: 300000
+
+springdoc:
+  swagger-ui:
+    path: /docs
+  api-docs:
+    path: /v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
