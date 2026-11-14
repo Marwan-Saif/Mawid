@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mawid
+      POSTGRES_USER: mawid
+      POSTGRES_PASSWORD: mawid
+    ports:
+      - "5432:5432"
+    volumes:
+      - mawid-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mawid"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      DATABASE_URL: jdbc:postgresql://db:5432/mawid
+      DATABASE_USER: mawid
+      DATABASE_PASSWORD: mawid
+      MAWID_TOKEN_SECRET: change-me-to-a-long-random-string-0123456789
+    ports:
+      - "8080:8080"
+
+volumes:
+  mawid-db:
