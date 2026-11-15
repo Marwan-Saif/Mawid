@@ -1,0 +1,19 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+  errors:
+    # Clean Architecture rule, checked in CI by tool/check_layers.sh as well:
+    # domain/ and presentation/ never import data sources directly.
+    todo: ignore
+
+linter:
+  rules:
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    prefer_final_locals: true
+    always_declare_return_types: true
+    avoid_print: true
+    require_trailing_commas: false
+    use_super_parameters: true
