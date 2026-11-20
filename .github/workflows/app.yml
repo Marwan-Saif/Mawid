@@ -1,0 +1,61 @@
+name: App (Flutter)
+
+on:
+  push:
+    paths: ["app/**", ".github/workflows/app.yml"]
+  pull_request:
+    paths: ["app/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Platform folders (if not committed yet)
+        run: |
+          if [ ! -d android ] || [ ! -d web ]; then
+            flutter create . --org com.mawid --project-name mawid --platforms=android,web
+          fi
+      - run: flutter pub get
+      - name: Clean Architecture boundaries
+        run: bash tool/check_layers.sh
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test --coverage
+      - name: Web demo (GitHub Pages)
+        run: flutter build web --release --base-href /${{ github.event.repository.name }}/
+      - name: Android demo APK
+        run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mawid-demo-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: app/build/web
+
+  deploy-demo:
+    # Needs Settings → Pages → Source: "GitHub Actions" once. Until then this job is skipped as a warning.
+    if: github.ref == 'refs/heads/main'
+    needs: test
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
