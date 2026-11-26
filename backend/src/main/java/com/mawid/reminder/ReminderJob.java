@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -39,15 +40,18 @@ public class ReminderJob {
     private final UserRepository users;
     private final Notifier notifier;
     private final Clock clock;
+    private final String publicUrl;
 
     public ReminderJob(BookingRepository bookings, PlaceRepository places, OfferedServiceRepository services,
-                       UserRepository users, Notifier notifier, Clock clock) {
+                       UserRepository users, Notifier notifier, Clock clock,
+                       @Value("${mawid.public-url:http://localhost:8080}") String publicUrl) {
         this.bookings = bookings;
         this.places = places;
         this.services = services;
         this.users = users;
         this.notifier = notifier;
         this.clock = clock;
+        this.publicUrl = publicUrl.endsWith("/") ? publicUrl.substring(0, publicUrl.length() - 1) : publicUrl;
     }
 
     @Scheduled(fixedDelayString = "${mawid.reminders.interval-ms:300000}", initialDelay = 30_000)
@@ -68,7 +72,8 @@ public class ReminderJob {
             if (customer != null && place != null && service != null) {
                 String time = b.getStartAt().atZone(place.zone()).format(TIME);
                 notifier.send(customer.getPhone(), "تذكير: موعدك " + service.getNameAr() + " في " + place.getNameAr()
-                        + " الساعة " + time + " | Reminder: " + service.getNameEn() + " at " + place.getNameEn());
+                        + " الساعة " + time + ". لما توصل سجّل وصولك من هنا: " + publicUrl + "/c/" + b.ensureCheckInCode()
+                        + " | Reminder: " + service.getNameEn() + " at " + place.getNameEn());
             }
             b.markReminded(now);
             bookings.save(b); // explicit: run() calls this without the transactional proxy

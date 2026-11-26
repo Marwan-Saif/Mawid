@@ -3,17 +3,27 @@ package com.mawid.seed;
 import static java.time.DayOfWeek.FRIDAY;
 import static java.time.DayOfWeek.SUNDAY;
 
+import com.mawid.audit.AuditActions;
+import com.mawid.audit.AuditService;
 import com.mawid.auth.AppUser;
+import com.mawid.auth.AuthUser;
 import com.mawid.auth.AuthController;
 import com.mawid.auth.Role;
 import com.mawid.auth.UserRepository;
 import com.mawid.booking.Booking;
+import com.mawid.booking.BookingRepository;
 import com.mawid.booking.BookingService;
 import com.mawid.booking.BookingService.Actor;
 import com.mawid.booking.BookingService.NewBooking;
 import com.mawid.booking.BookingSource;
 import com.mawid.booking.BookingStatus;
 import com.mawid.common.ApiException;
+import com.mawid.invoice.Invoice;
+import com.mawid.invoice.InvoiceDtos.CreateInvoiceRequest;
+import com.mawid.invoice.InvoiceDtos.LineInput;
+import com.mawid.invoice.InvoiceDtos.UpdateInvoiceRequest;
+import com.mawid.invoice.InvoiceService;
+import com.mawid.invoice.PaymentMethod;
 import com.mawid.place.Category;
 import com.mawid.place.OfferedService;
 import com.mawid.place.OfferedServiceRepository;
@@ -22,6 +32,7 @@ import com.mawid.place.PlaceRepository;
 import com.mawid.place.Review;
 import com.mawid.place.ReviewRepository;
 import com.mawid.place.Staff;
+import com.mawid.place.StaffPresence;
 import com.mawid.place.StaffRepository;
 import com.mawid.scheduling.SlotCalculator;
 import java.math.BigDecimal;
@@ -31,6 +42,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +55,10 @@ import org.springframework.stereotype.Component;
  * Demo data so the app, the booking page and Swagger have something real to show on first run:
  * two salons/spas in Dubai and two clinics in Cairo, staff, services, reviews, a demo customer
  * and a demo owner, and a realistic "today" for the owner dashboard.
+ *
+ * <p>Plus Al Nakheel Clinic in Amman with a live front desk "right now": a patient in each room,
+ * people waiting with real delays, two invoices (one edited by reception) and the audit trail,
+ * all placed around the current time so the demo looks alive whenever it is opened.
  */
 @Component
 @ConditionalOnProperty(prefix = "mawid.seed", name = "enabled", havingValue = "true")
@@ -56,10 +72,14 @@ public class DemoDataSeeder implements ApplicationRunner {
     private final ReviewRepository reviews;
     private final UserRepository users;
     private final BookingService bookings;
+    private final BookingRepository bookingRows;
+    private final InvoiceService invoices;
+    private final AuditService audit;
     private final Clock clock;
 
     public DemoDataSeeder(PlaceRepository places, OfferedServiceRepository services, StaffRepository staff,
                           ReviewRepository reviews, UserRepository users, BookingService bookings,
+                          BookingRepository bookingRows, InvoiceService invoices, AuditService audit,
                           Clock clock) {
         this.places = places;
         this.services = services;
@@ -67,6 +87,9 @@ public class DemoDataSeeder implements ApplicationRunner {
         this.reviews = reviews;
         this.users = users;
         this.bookings = bookings;
+        this.bookingRows = bookingRows;
+        this.invoices = invoices;
+        this.audit = audit;
         this.clock = clock;
     }
 
@@ -93,9 +116,10 @@ public class DemoDataSeeder implements ApplicationRunner {
         OfferedService protein = service(lamsa, "بروتين وعلاج", "Protein treatment", 120, "600");
         OfferedService nails = service(lamsa, "مانيكير وباديكير", "Manicure & pedicure", 60, "150");
         Set<Long> lamsaAll = Set.of(haircut.getId(), colour.getId(), protein.getId(), nails.getId());
-        Staff noura = staff.save(new Staff(lamsa.getId(), "نورا", "خبيرة شعر", "Hair specialist", lamsaAll, Set.of()));
+        Staff noura = staff.save(new Staff(lamsa.getId(), "نورا", "خبيرة شعر", "Hair specialist", lamsaAll, Set.of())
+                .inRoom("كرسي ١"));
         Staff reem = staff.save(new Staff(lamsa.getId(), "ريم", "مصففة شعر", "Stylist",
-                Set.of(haircut.getId(), nails.getId()), Set.of(SUNDAY)));
+                Set.of(haircut.getId(), nails.getId()), Set.of(SUNDAY)).inRoom("كرسي ٢"));
         review(lamsa, "سارة م.", 5, "خدمة ممتازة ونورا شاطرة جدًا في الصبغة.", 3);
         review(lamsa, "Hind A.", 5, "Booked in seconds, no calls needed. Lovely place.", 9);
         review(lamsa, "منى ع.", 4, "المكان نضيف والمواعيد مظبوطة.", 20);
@@ -144,7 +168,7 @@ public class DemoDataSeeder implements ApplicationRunner {
         AppUser salma = customer("+971500000105", "سلمى ر.", now);
 
         // ------------------------------------------------------------ a believable "today" at Lamsa
-        LocalDate today = LocalDate.now(lamsa.zone());
+        LocalDate today = now.atZone(lamsa.zone()).toLocalDate();
         todayBooking(lamsa, colour, noura, mariam, today, LocalTime.of(10, 0), now);
         todayBooking(lamsa, haircut, reem, hala, today, LocalTime.of(11, 30), now);
         todayBooking(lamsa, protein, noura, dina, today, LocalTime.of(13, 0), now);
@@ -158,6 +182,107 @@ public class DemoDataSeeder implements ApplicationRunner {
         tryBook(lamsa, haircut, null, ahmed, inThreeDays, BookingStatus.CONFIRMED, BookingSource.APP);
         Instant lastWeek = today.minusDays(7).atTime(17, 0).atZone(lamsa.zone()).toInstant();
         tryBook(lamsa, haircut, reem, ahmed, lastWeek, BookingStatus.COMPLETED, BookingSource.APP);
+
+        seedNakheel(now, ahmed);
+    }
+
+    // ================================================================ Al Nakheel Clinic: the front desk, live
+
+    private void seedNakheel(Instant now, AppUser ahmed) {
+        Place nakheel = places.save(new Place("nakheel-clinic", "عيادة النخيل", "Al Nakheel Clinic", Category.CLINIC,
+                "عبدون، عمّان", "Abdoun, Amman", "Asia/Amman", "JOD", "+962790000010",
+                LocalTime.of(8, 0), LocalTime.of(23, 0), Set.of()).withStats(4.8, 132, 2.6)
+                .startingInvoicesAt(1041));
+        OfferedService consult = service(nakheel, "كشفية", "Consultation", 30, "20");
+        OfferedService followUp = service(nakheel, "مراجعة", "Follow-up", 15, "10");
+        OfferedService pressure = service(nakheel, "قياس ضغط", "Blood pressure check", 15, "5");
+        OfferedService sugar = service(nakheel, "فحص سكر", "Blood sugar test", 15, "7");
+        Set<Long> all = Set.of(consult.getId(), followUp.getId(), pressure.getId(), sugar.getId());
+        Staff khaled = staff.save(new Staff(nakheel.getId(), "د. خالد العمري", "طبيب عام", "General practitioner",
+                all, Set.of()).inRoom("غرفة ١"));
+        Staff lina = staff.save(new Staff(nakheel.getId(), "د. لينا حداد", "طبيبة أطفال", "Paediatrician",
+                all, Set.of()).inRoom("غرفة ٢"));
+        review(nakheel, "أم خالد", 5, "صرت أعرف دوري من الشاشة بدل ما أسأل الاستقبال كل شوي.", 4);
+        review(nakheel, "Omar S.", 5, "Checked in with the QR in two seconds.", 11);
+
+        AppUser sara = users.save(new AppUser(AuthController.DEMO_RECEPTION_PHONE, "سارة", Role.RECEPTION,
+                nakheel.getId(), now));
+        AuthUser desk = new AuthUser(sara.getId(), Role.RECEPTION, nakheel.getId());
+        AppUser abuSami = customer("+962790000101", "أبو سامي", now);
+        AppUser ummKhaled = customer("+962790000102", "أم خالد", now);
+        AppUser yousef = customer("+962790000103", "يوسف النجار", now);
+        AppUser layan = customer("+962790000104", "ليان عيسى", now);
+        AppUser mahmoud = customer("+962790000105", "محمود الرواشدة", now);
+        AppUser rana = customer("+962790000106", "رنا حداد", now);
+        AppUser ali = customer("+962790000107", "علي الخطيب", now);
+        AppUser huda = customer("+962790000108", "هدى سليمان", now);
+
+        Instant t0 = SlotCalculator.alignDown(now);
+        // Dr Khaled: one done, one in the room running late, Abu Sami waiting, more coming.
+        Booking k1 = visit(nakheel, consult, khaled, ummKhaled, t0.minus(min(60)));
+        Booking k2 = visit(nakheel, consult, khaled, yousef, t0.minus(min(30)));
+        Booking k3 = visit(nakheel, consult, khaled, abuSami, t0);
+        Booking k4 = visit(nakheel, consult, khaled, mahmoud, t0.plus(min(30)));
+        Booking k5 = visit(nakheel, followUp, khaled, huda, t0.plus(min(60)));
+        visit(nakheel, consult, khaled, ahmed, t0.plus(min(120))); // the demo customer's own visit: his QR works here
+        // Dr Lina: one done (invoice edited at the desk), free now with someone waiting.
+        Booking l1 = visit(nakheel, consult, lina, layan, t0.minus(min(45)));
+        Booking l2 = visit(nakheel, followUp, lina, rana, t0.plus(min(15)));
+        Booking l3 = visit(nakheel, consult, lina, ali, t0.plus(min(45)));
+        if (k1 == null || k2 == null || k3 == null || l1 == null || l2 == null) {
+            log.warn("Al Nakheel demo queue skipped: the times around now are not free");
+            return;
+        }
+
+        k1.checkIn(1, t0.minus(min(70)));
+        k1.call(khaled.getRoom(), t0.minus(min(58)));
+        k1.finish(t0.minus(min(31)));
+        l1.checkIn(2, t0.minus(min(52)));
+        l1.call(lina.getRoom(), t0.minus(min(45)));
+        l1.finish(t0.minus(min(16)));
+        k2.checkIn(3, t0.minus(min(38)));
+        k2.call(khaled.getRoom(), now.minus(min(20)));
+        k3.checkIn(4, now.minus(min(10)));
+        l2.checkIn(5, now.minus(min(6)));
+        if (k5 != null) {
+            k5.checkIn(6, now.minus(min(3)));
+        }
+        bookingRows.saveAll(java.util.stream.Stream.of(k1, k2, k3, k4, k5, l1, l2, l3)
+                .filter(java.util.Objects::nonNull).toList());
+        khaled.setPresence(StaffPresence.BUSY, now.minus(min(20)));
+        lina.setPresence(StaffPresence.AVAILABLE, t0.minus(min(16)));
+        staff.saveAll(List.of(khaled, lina));
+
+        audit.record(nakheel.getId(), desk, AuditActions.CHECKED_IN, AuditActions.BOOKING, k3.getId(), "أبو سامي",
+                Map.of("ticket", 4, "via", "QR"));
+        audit.record(nakheel.getId(), desk, AuditActions.CALLED, AuditActions.BOOKING, k2.getId(), yousef.getName(),
+                Map.of("ticket", 3, "room", khaled.getRoom(), "staff", khaled.getName(), "repeat", false));
+
+        // #1041 paid in cash; #1042 issued for the consultation, then reception added a blood pressure check.
+        invoices.create(nakheel.getId(), new CreateInvoiceRequest(k1.getId(), null, null,
+                List.of(line(consult)), null, PaymentMethod.CASH, "seed-1041"), desk);
+        Invoice second = invoices.create(nakheel.getId(), new CreateInvoiceRequest(l1.getId(), null, null,
+                List.of(line(consult)), null, null, "seed-1042"), desk);
+        invoices.update(nakheel.getId(), second.getId(), new UpdateInvoiceRequest(
+                List.of(line(consult), line(pressure)), null, second.getVersion()), desk);
+    }
+
+    private Booking visit(Place p, OfferedService s, Staff st, AppUser c, Instant start) {
+        try {
+            return bookings.create(new NewBooking(p.getId(), s.getId(), st.getId(), c.getId(), start, null,
+                    BookingSource.APP, BookingStatus.CONFIRMED), Actor.SYSTEM);
+        } catch (ApiException e) {
+            log.debug("Skipped Al Nakheel demo visit at {}: {}", start, e.code());
+            return null;
+        }
+    }
+
+    private static LineInput line(OfferedService s) {
+        return new LineInput(s.getNameAr(), 1, s.getPrice(), s.getId());
+    }
+
+    private static Duration min(long minutes) {
+        return Duration.ofMinutes(minutes);
     }
 
     private OfferedService service(Place p, String ar, String en, int minutes, String price) {

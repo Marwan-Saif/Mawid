@@ -22,6 +22,8 @@ server:
   forward-headers-strategy: framework
 
 mawid:
+  # Public address of this server, used in links sent to customers (check-in link in reminders).
+  public-url: ${MAWID_PUBLIC_URL:http://localhost:8080}
   auth:
     # Override in production with a long random value (MAWID_TOKEN_SECRET).
     token-secret: ${MAWID_TOKEN_SECRET:dev-only-secret-change-me-0123456789abcdef}
