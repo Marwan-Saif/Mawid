@@ -1,5 +1,7 @@
 package com.mawid.booking;
 
+import com.mawid.audit.AuditActions;
+import com.mawid.audit.AuditService;
 import com.mawid.auth.AppUser;
 import com.mawid.auth.AuthUser;
 import com.mawid.auth.PhoneNumbers;
@@ -25,7 +27,9 @@ import jakarta.validation.Valid;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -53,17 +57,19 @@ public class OwnerController {
     private final OfferedServiceRepository services;
     private final StaffRepository staff;
     private final UserRepository users;
+    private final AuditService audit;
     private final Clock clock;
 
     public OwnerController(BookingService bookings, BookingViews views, PlaceQueries places,
                            OfferedServiceRepository services, StaffRepository staff, UserRepository users,
-                           Clock clock) {
+                           AuditService audit, Clock clock) {
         this.bookings = bookings;
         this.views = views;
         this.places = places;
         this.services = services;
         this.staff = staff;
         this.users = users;
+        this.audit = audit;
         this.clock = clock;
     }
 
@@ -83,9 +89,13 @@ public class OwnerController {
     }
 
     @PatchMapping("/bookings/{id}/status")
+    @Transactional
     public BookingDto status(@AuthenticationPrincipal AuthUser me, @PathVariable Long id,
                              @Valid @RequestBody StatusUpdate body) {
-        return views.of(bookings.updateStatus(id, body.status(), me));
+        Booking b = bookings.updateStatus(id, body.status(), me);
+        audit.record(b.getPlaceId(), me, AuditActions.BOOKING_STATUS, AuditActions.BOOKING, b.getId(),
+                "#" + b.getId(), Map.of("to", body.status().name()));
+        return views.of(b);
     }
 
     @Operation(summary = "Add a walk-in or phone booking; uses the same locks, so it can't clash")
@@ -99,6 +109,8 @@ public class OwnerController {
                 new AppUser(phone, body.customerName().trim(), Role.CUSTOMER, null, Instant.now(clock))));
         Booking b = bookings.create(new NewBooking(placeId, body.serviceId(), body.staffId(), customer.getId(),
                 body.startAt(), body.note(), BookingSource.MANUAL, BookingStatus.CONFIRMED), Actor.OWNER);
+        audit.record(placeId, me, AuditActions.BOOKING_CREATED, AuditActions.BOOKING, b.getId(), customer.getName(),
+                Map.of("startAt", b.getStartAt().toString(), "source", BookingSource.MANUAL.name()));
         return views.of(b);
     }
 
@@ -119,6 +131,8 @@ public class OwnerController {
         for (Staff member : staff.findByPlaceIdOrderByIdAsc(placeId)) {
             member.addService(s.getId());
         }
+        audit.record(placeId, me, AuditActions.SERVICE_SAVED, AuditActions.SERVICE, s.getId(), s.getNameAr(),
+                Map.of("price", s.getPrice(), "durationMin", s.getDurationMin(), "new", true));
         return ServiceDto.of(s);
     }
 
@@ -131,8 +145,21 @@ public class OwnerController {
         OfferedService s = services.findById(id)
                 .filter(x -> x.getPlaceId().equals(placeId))
                 .orElseThrow(() -> ApiException.notFound("Service"));
-        s.update(body.nameAr().trim(), body.nameEn().trim(), body.durationMin(), body.price(),
-                body.active() == null || body.active());
+        Map<String, Object> d = new LinkedHashMap<>();
+        if (s.getPrice().compareTo(body.price()) != 0) {
+            d.put("priceFrom", s.getPrice());
+            d.put("priceTo", body.price());
+        }
+        if (s.getDurationMin() != body.durationMin()) {
+            d.put("durationFrom", s.getDurationMin());
+            d.put("durationTo", body.durationMin());
+        }
+        boolean active = body.active() == null || body.active();
+        if (s.isActive() != active) {
+            d.put("active", active);
+        }
+        s.update(body.nameAr().trim(), body.nameEn().trim(), body.durationMin(), body.price(), active);
+        audit.record(placeId, me, AuditActions.SERVICE_SAVED, AuditActions.SERVICE, s.getId(), s.getNameAr(), d);
         return ServiceDto.of(s);
     }
 

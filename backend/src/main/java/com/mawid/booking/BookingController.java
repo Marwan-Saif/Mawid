@@ -1,5 +1,7 @@
 package com.mawid.booking;
 
+import com.mawid.audit.AuditActions;
+import com.mawid.audit.AuditService;
 import com.mawid.auth.AuthUser;
 import com.mawid.booking.BookingDtos.BookingDto;
 import com.mawid.booking.BookingDtos.CreateBookingRequest;
@@ -10,6 +12,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,10 +31,12 @@ public class BookingController {
 
     private final BookingService service;
     private final BookingViews views;
+    private final AuditService audit;
 
-    public BookingController(BookingService service, BookingViews views) {
+    public BookingController(BookingService service, BookingViews views, AuditService audit) {
         this.service = service;
         this.views = views;
+        this.audit = audit;
     }
 
     @Operation(summary = "Book a slot. staffId null = any available team member. 409 SLOT_TAKEN if someone was faster.")
@@ -49,14 +55,23 @@ public class BookingController {
 
     @Operation(summary = "Cancel; frees the time immediately. Customers: up to 3 hours before.")
     @PostMapping("/{id}/cancel")
+    @Transactional
     public BookingDto cancel(@AuthenticationPrincipal AuthUser me, @PathVariable Long id) {
-        return views.of(service.cancel(id, me));
+        Booking b = service.cancel(id, me);
+        audit.record(b.getPlaceId(), me, AuditActions.BOOKING_CANCELLED, AuditActions.BOOKING, b.getId(),
+                "#" + b.getId(), Map.of("startAt", b.getStartAt().toString()));
+        return views.of(b);
     }
 
     @Operation(summary = "Move to another time (and optionally another team member).")
     @PostMapping("/{id}/reschedule")
+    @Transactional
     public BookingDto reschedule(@AuthenticationPrincipal AuthUser me, @PathVariable Long id,
                                  @Valid @RequestBody RescheduleRequest body) {
-        return views.of(service.reschedule(id, body.startAt(), body.staffId(), me));
+        String before = service.startOf(id).toString();
+        Booking b = service.reschedule(id, body.startAt(), body.staffId(), me);
+        audit.record(b.getPlaceId(), me, AuditActions.BOOKING_MOVED, AuditActions.BOOKING, b.getId(),
+                "#" + b.getId(), Map.of("from", before, "to", b.getStartAt().toString()));
+        return views.of(b);
     }
 }
