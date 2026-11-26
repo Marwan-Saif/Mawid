@@ -52,7 +52,7 @@ public class BookingViews {
             OfferedService s = cached(serviceById, b.getServiceId(), id -> services.findById(id).orElse(null));
             Staff st = cached(staffById, b.getStaffId(), id -> staff.findById(id).orElse(null));
             AppUser c = cached(userById, b.getCustomerId(), id -> users.findById(id).orElse(null));
-            boolean canChange = b.getStatus().holdsTime() && b.getStatus() != BookingStatus.COMPLETED
+            boolean canChange = (b.getStatus() == BookingStatus.PENDING || b.getStatus() == BookingStatus.CONFIRMED)
                     && SlotCalculator.customerCanChange(b.getStartAt(), now);
             return new BookingDto(b.getId(), b.getPlaceId(),
                     p == null ? null : p.getSlug(),
@@ -68,7 +68,9 @@ public class BookingViews {
                     c == null ? null : c.getName(),
                     c == null ? null : c.getPhone(),
                     b.getStartAt(), b.endAt(), b.getDurationMin(), b.getPrice(), b.getCurrency(),
-                    b.getStatus(), b.getSource(), b.getNote(), b.getCreatedAt(), canChange);
+                    b.getStatus(), b.getSource(), b.getNote(), b.getCreatedAt(), canChange,
+                    b.ensureCheckInCode(), b.getTicketNo(), b.getCheckedInAt(), b.getCalledAt(), b.getRoom(),
+                    b.getStartedAt(), b.getFinishedAt());
         }).toList();
     }
 

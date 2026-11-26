@@ -11,6 +11,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 
@@ -68,6 +69,33 @@ public class Booking {
 
     private Instant remindedAt;
 
+    // ------------------------------------------------------------ front desk (all nullable: older rows)
+
+    /**
+     * Short secret shown as a QR on the customer's booking. Scanned at reception, or opened as
+     * /c/{code} on the customer's phone to check in by themselves.
+     */
+    @Column(name = "check_in_code", unique = true, length = 16)
+    private String checkInCode;
+
+    /** Number on the waiting-room screen, given at check-in (1, 2, 3... per place per day). */
+    @Column(name = "ticket_no")
+    private Integer ticketNo;
+
+    private Instant checkedInAt;
+
+    /** Last time the patient was called to the room; the waiting screen announces each new value. */
+    private Instant calledAt;
+
+    private Integer callCount;
+
+    /** Room or chair the patient was called to ("Room 2", "Chair 1"). */
+    @Column(length = 40)
+    private String room;
+
+    private Instant startedAt;
+    private Instant finishedAt;
+
     @Version
     private long version;
 
@@ -89,6 +117,49 @@ public class Booking {
         this.source = source;
         this.note = note;
         this.createdAt = createdAt;
+        this.checkInCode = newCheckInCode();
+    }
+
+    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final char[] CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789".toCharArray();
+
+    /** 10 characters from a 31-letter alphabet without look-alikes (0/O, 1/I/L): about 8e14 codes. */
+    static String newCheckInCode() {
+        char[] out = new char[10];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = CODE_ALPHABET[RANDOM.nextInt(CODE_ALPHABET.length)];
+        }
+        return new String(out);
+    }
+
+    /** Rows created before the front-desk module have no code yet. */
+    public String ensureCheckInCode() {
+        if (checkInCode == null) {
+            checkInCode = newCheckInCode();
+        }
+        return checkInCode;
+    }
+
+    public void checkIn(int ticket, Instant at) {
+        this.status = BookingStatus.ARRIVED;
+        this.ticketNo = ticket;
+        this.checkedInAt = at;
+    }
+
+    /** Call to the room. Calling again (patient didn't hear) only repeats the announcement. */
+    public void call(String room, Instant at) {
+        if (status != BookingStatus.IN_PROGRESS) {
+            this.status = BookingStatus.IN_PROGRESS;
+            this.startedAt = at;
+        }
+        this.room = room;
+        this.calledAt = at;
+        this.callCount = (callCount == null ? 0 : callCount) + 1;
+    }
+
+    public void finish(Instant at) {
+        this.status = BookingStatus.COMPLETED;
+        this.finishedAt = at;
     }
 
     public Instant endAt() {
@@ -123,4 +194,12 @@ public class Booking {
     public String getNote() { return note; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getRemindedAt() { return remindedAt; }
+    public String getCheckInCode() { return checkInCode; }
+    public Integer getTicketNo() { return ticketNo; }
+    public Instant getCheckedInAt() { return checkedInAt; }
+    public Instant getCalledAt() { return calledAt; }
+    public int getCallCount() { return callCount == null ? 0 : callCount; }
+    public String getRoom() { return room; }
+    public Instant getStartedAt() { return startedAt; }
+    public Instant getFinishedAt() { return finishedAt; }
 }

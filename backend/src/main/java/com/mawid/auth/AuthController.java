@@ -27,6 +27,8 @@ public class AuthController {
     /** Seeded demo accounts, see DemoDataSeeder. */
     public static final String DEMO_CUSTOMER_PHONE = "+971500000001";
     public static final String DEMO_OWNER_PHONE = "+971500000002";
+    /** Sara at the front desk of Al Nakheel Clinic (Amman). */
+    public static final String DEMO_RECEPTION_PHONE = "+962790000003";
 
     public record OtpRequest(@NotBlank String phone) {
     }
@@ -34,7 +36,7 @@ public class AuthController {
     public record OtpVerify(@NotBlank String phone, @NotBlank String code, String name) {
     }
 
-    public record DemoLogin(@NotBlank @Pattern(regexp = "CUSTOMER|OWNER") String role) {
+    public record DemoLogin(@NotBlank @Pattern(regexp = "CUSTOMER|OWNER|RECEPTION") String role) {
     }
 
     public record UserDto(Long id, String phone, String name, Role role, Long placeId, String lang) {
@@ -85,13 +87,17 @@ public class AuthController {
         return new Session(tokens.issue(user.getId()), UserDto.of(user));
     }
 
-    @Operation(summary = "Demo only: sign in as the seeded customer or owner without SMS")
+    @Operation(summary = "Demo only: sign in as the seeded customer, owner or receptionist without SMS")
     @PostMapping("/auth/demo")
     public Session demo(@Valid @RequestBody DemoLogin body) {
         if (!props.demoEnabled()) {
             throw ApiException.forbidden("Demo login is disabled");
         }
-        String phone = "OWNER".equals(body.role()) ? DEMO_OWNER_PHONE : DEMO_CUSTOMER_PHONE;
+        String phone = switch (body.role()) {
+            case "OWNER" -> DEMO_OWNER_PHONE;
+            case "RECEPTION" -> DEMO_RECEPTION_PHONE;
+            default -> DEMO_CUSTOMER_PHONE;
+        };
         AppUser user = users.findByPhone(phone)
                 .orElseThrow(() -> new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "NO_DEMO_DATA",
                         "Demo data not seeded"));

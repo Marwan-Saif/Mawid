@@ -33,6 +33,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**", "/api/v1/public/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/places/**").permitAll()
                         .requestMatchers("/api/v1/owner/**").hasRole("OWNER")
+                        .requestMatchers("/api/v1/desk/**").hasAnyRole("OWNER", "RECEPTION")
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(e -> e

@@ -42,8 +42,12 @@ public class BookingService {
 
     private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm");
 
-    /** Who is acting decides which rules apply. */
-    public enum Actor { CUSTOMER, OWNER, SYSTEM }
+    /**
+     * Who is acting decides which rules apply. DESK is reception adding a walk-in "now": the
+     * person is standing there, so the start may be the current (already begun) 15-minute unit
+     * and working hours are not checked.
+     */
+    public enum Actor { CUSTOMER, OWNER, DESK, SYSTEM }
 
     public record NewBooking(Long placeId, Long serviceId, Long staffId, Long customerId, Instant startAt,
                              String note, BookingSource source, BookingStatus status) {
@@ -111,7 +115,8 @@ public class BookingService {
     public Booking cancel(Long bookingId, AuthUser by) {
         Booking b = booking(bookingId);
         Actor actor = authorize(b, by);
-        if (!b.getStatus().holdsTime() || b.getStatus() == BookingStatus.COMPLETED) {
+        if (!b.getStatus().holdsTime() || b.getStatus() == BookingStatus.COMPLETED
+                || b.getStatus() == BookingStatus.IN_PROGRESS) {
             throw ApiException.conflict("NOT_CANCELLABLE", "This booking can no longer be cancelled");
         }
         if (actor == Actor.CUSTOMER && !SlotCalculator.customerCanChange(b.getStartAt(), Instant.now(clock))) {
@@ -126,7 +131,8 @@ public class BookingService {
     public Booking reschedule(Long bookingId, Instant newStart, Long staffId, AuthUser by) {
         Booking b = booking(bookingId);
         Actor actor = authorize(b, by);
-        if (!b.getStatus().holdsTime() || b.getStatus() == BookingStatus.COMPLETED) {
+        if (!b.getStatus().holdsTime() || b.getStatus() == BookingStatus.COMPLETED
+                || b.getStatus() == BookingStatus.IN_PROGRESS) {
             throw ApiException.conflict("NOT_CHANGEABLE", "This booking can no longer be changed");
         }
         Instant now = Instant.now(clock);
@@ -149,7 +155,7 @@ public class BookingService {
     @Transactional
     public Booking updateStatus(Long bookingId, BookingStatus status, AuthUser owner) {
         Booking b = booking(bookingId);
-        if (!owner.isOwnerOf(b.getPlaceId())) {
+        if (!owner.worksAt(b.getPlaceId())) {
             throw ApiException.forbidden("Not your place");
         }
         if (b.getStatus() == status) {
@@ -171,7 +177,40 @@ public class BookingService {
         return b;
     }
 
+    /**
+     * The earliest start from {@code from} (aligned down to its 15-minute unit) within
+     * {@code horizon} where someone who does the service is free. Used for walk-ins; checks only,
+     * so a miss is an empty result instead of an exception that would mark the transaction
+     * rollback-only.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Optional<Instant> firstFreeStart(Long placeId, Long serviceId, Long staffId, Instant from,
+                                                      java.time.Duration horizon) {
+        Place place = place(placeId);
+        OfferedService service = serviceOf(place, serviceId);
+        List<Staff> candidates = candidates(place, service, staffId);
+        Instant t = SlotCalculator.alignDown(from);
+        Instant limit = from.plus(horizon);
+        while (t.isBefore(limit)) {
+            LocalDate localDate = t.atZone(place.zone()).toLocalDate();
+            List<Instant> units = SlotCalculator.lockUnits(t, service.getDurationMin());
+            for (Staff s : candidates) {
+                if (!s.getDaysOff().contains(localDate.getDayOfWeek())
+                        && !locks.existsByStaffIdAndUnitStartIn(s.getId(), units)) {
+                    return java.util.Optional.of(t);
+                }
+            }
+            t = t.plus(java.time.Duration.ofMinutes(SlotCalculator.UNIT_MINUTES));
+        }
+        return java.util.Optional.empty();
+    }
+
     // ---------------------------------------------------------------- queries
+
+    @Transactional(readOnly = true)
+    public Instant startOf(Long bookingId) {
+        return booking(bookingId).getStartAt();
+    }
 
     @Transactional(readOnly = true)
     public List<Booking> forCustomer(Long customerId) {
@@ -192,10 +231,11 @@ public class BookingService {
         if (!SlotCalculator.isAligned(start)) {
             throw ApiException.badRequest("SLOT_NOT_ALIGNED", "Start time must be on a 15-minute boundary");
         }
-        if (actor != Actor.SYSTEM && !start.isAfter(Instant.now(clock))) {
+        boolean trusted = actor == Actor.SYSTEM || actor == Actor.DESK;
+        if (!trusted && !start.isAfter(Instant.now(clock))) {
             throw ApiException.badRequest("SLOT_IN_PAST", "This time has already passed");
         }
-        if (!SlotCalculator.fitsWorkingHours(start, durationMin, place.zone(), place.workingHours())) {
+        if (!trusted && !SlotCalculator.fitsWorkingHours(start, durationMin, place.zone(), place.workingHours())) {
             throw ApiException.badRequest("OUTSIDE_WORKING_HOURS", "The place is closed at this time");
         }
     }
@@ -266,7 +306,7 @@ public class BookingService {
     }
 
     private Actor authorize(Booking b, AuthUser by) {
-        if (by.isOwnerOf(b.getPlaceId())) {
+        if (by.worksAt(b.getPlaceId())) {
             return Actor.OWNER;
         }
         if (b.getCustomerId().equals(by.id())) {

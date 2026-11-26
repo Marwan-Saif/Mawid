@@ -13,6 +13,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -45,6 +46,16 @@ public class Staff {
     @Column(name = "day_of_week")
     private Set<DayOfWeek> daysOff = new HashSet<>();
 
+    /** Room or chair patients are called to: "غرفة ٢", "Chair 1". */
+    @Column(length = 40)
+    private String room;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 16)
+    private StaffPresence presence;
+
+    private Instant presenceSince;
+
     protected Staff() {
     }
 
@@ -64,6 +75,23 @@ public class Staff {
     public void addService(Long serviceId) {
         serviceIds.add(serviceId);
     }
+
+    public Staff inRoom(String room) {
+        this.room = room;
+        return this;
+    }
+
+    public void setPresence(StaffPresence presence, Instant at) {
+        if (this.presence != presence) {
+            this.presence = presence;
+            this.presenceSince = at;
+        }
+    }
+
+    /** Defaults to "available" for rows created before presence existed. */
+    public StaffPresence getPresence() { return presence == null ? StaffPresence.AVAILABLE : presence; }
+    public Instant getPresenceSince() { return presenceSince; }
+    public String getRoom() { return room; }
 
     public Long getId() { return id; }
     public Long getPlaceId() { return placeId; }

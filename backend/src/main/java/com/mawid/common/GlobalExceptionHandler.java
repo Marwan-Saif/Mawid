@@ -5,6 +5,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -29,6 +30,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ProblemDetail> handleIntegrity(DataIntegrityViolationException e) {
         return problem(HttpStatus.CONFLICT, "SLOT_TAKEN", "This time was just booked by someone else");
+    }
+
+    /** Two desks saved the same row at the same moment; the later one is told to reload. */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ProblemDetail> handleStale(ObjectOptimisticLockingFailureException e) {
+        return problem(HttpStatus.CONFLICT, "STALE", "Someone else just changed this. Reload and try again.");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -70,6 +70,9 @@ public class Place {
     @Column(name = "day_of_week")
     private Set<DayOfWeek> closedDays = new HashSet<>();
 
+    /** Next invoice number. Taken under a row lock (see PlaceRepository#lockById), so numbers never repeat. */
+    private Long nextInvoiceNo;
+
     protected Place() {
     }
 
@@ -103,6 +106,18 @@ public class Place {
         this.rating = rating;
         this.reviewsCount = reviewsCount;
         this.distanceKm = distanceKm;
+        return this;
+    }
+
+    /** Call only on a row loaded with {@code PlaceRepository.lockById}. */
+    public long takeInvoiceNo() {
+        long n = nextInvoiceNo == null ? 1001 : nextInvoiceNo;
+        nextInvoiceNo = n + 1;
+        return n;
+    }
+
+    public Place startingInvoicesAt(long number) {
+        this.nextInvoiceNo = number;
         return this;
     }
 

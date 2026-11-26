@@ -16,7 +16,9 @@ public final class BookingDtos {
                              Long staffId, String staffName, Long customerId, String customerName,
                              String customerPhone, Instant startAt, Instant endAt, int durationMin,
                              BigDecimal price, String currency, BookingStatus status, BookingSource source,
-                             String note, Instant createdAt, boolean canChange) {
+                             String note, Instant createdAt, boolean canChange,
+                             String checkInCode, Integer ticketNo, Instant checkedInAt, Instant calledAt,
+                             String room, Instant startedAt, Instant finishedAt) {
     }
 
     /** staffId null means "any available". */
