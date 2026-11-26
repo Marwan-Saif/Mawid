@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>موعد · شاشة الانتظار</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700;800&family=Noto+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* The TV in the waiting room. Dark so it doesn't glare across the room; huge type for 4-5 m away. */
+    :root {
+      --bg: #0B1220; --panel: #111A2E; --panel-2: #16223B; --border: #23324D; --text: #E2E8F0; --muted: #A3B3C9;
+      --primary: #38BDF8; --ok: #34D399; --busy: #FBBF24; --off: #94A3B8; --bad: #F87171;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { margin: 0; background: var(--bg); color: var(--text); overflow: hidden;
+      font-family: "Noto Sans Arabic", "Noto Sans", system-ui, sans-serif; font-size: clamp(14px, 1.25vw, 28px); }
+    html[lang="en"] body { font-family: "Noto Sans", system-ui, sans-serif; }
+    .screen { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; gap: 1.2vw; padding: 1.6vw 2vw; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 2vw; }
+    header h1 { margin: 0; font-size: 2em; font-weight: 800; }
+    header .sub { color: var(--muted); }
+    .clock { font-size: 2.2em; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .body { display: grid; grid-template-columns: 1.1fr 1fr; gap: 1.6vw; min-height: 0; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 1.4vw; padding: 1.4vw; min-height: 0; }
+    .label { color: var(--muted); font-weight: 600; letter-spacing: .02em; margin: 0 0 .8vw; font-size: 1em; }
+
+    .call { display: grid; place-items: center; text-align: center; position: relative; overflow: hidden; }
+    .call .ticket { font-size: 9em; line-height: 1; font-weight: 800; color: var(--primary); font-variant-numeric: tabular-nums; }
+    .call .who { font-size: 2.6em; font-weight: 700; margin-top: .3em; }
+    .call .room { display: inline-flex; gap: .4em; align-items: center; margin-top: .5em; font-size: 2em; font-weight: 700;
+      background: var(--panel-2); border: 1px solid var(--border); padding: .25em .8em; border-radius: 999px; }
+    .call.flash { animation: flash 1.2s ease-out 3; }
+    @keyframes flash { 0% { box-shadow: inset 0 0 0 0 var(--primary); } 30% { box-shadow: inset 0 0 0 .6vw var(--primary); } 100% { box-shadow: inset 0 0 0 0 transparent; } }
+    .idle { color: var(--muted); font-size: 1.6em; }
+
+    .right { display: grid; grid-template-rows: auto 1fr; gap: 1.6vw; min-height: 0; }
+    .team { display: grid; grid-template-columns: repeat(auto-fit, minmax(14em, 1fr)); gap: 1vw; }
+    .doc { background: var(--panel-2); border: 1px solid var(--border); border-radius: 1vw; padding: 1vw 1.2vw; }
+    .doc .n { font-weight: 700; font-size: 1.2em; }
+    .doc .r { color: var(--muted); }
+    .state { display: inline-flex; align-items: center; gap: .45em; margin-top: .5em; font-weight: 700; }
+    .dot { width: .8em; height: .8em; border-radius: 50%; background: currentColor; }
+    .AVAILABLE { color: var(--ok); } .BUSY { color: var(--busy); } .BREAK { color: var(--busy); } .AWAY { color: var(--off); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 1.25em; }
+    th { text-align: start; color: var(--muted); font-weight: 600; font-size: .75em; padding: 0 .4em .5em; }
+    td { padding: .55em .4em; border-top: 1px solid var(--border); }
+    td.t { font-weight: 800; color: var(--primary); width: 3.4em; font-variant-numeric: tabular-nums; }
+    td.eta { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .late { color: var(--busy); font-size: .8em; font-weight: 700; display: block; }
+    .wait-list { overflow: hidden; }
+
+    footer { display: flex; justify-content: space-between; align-items: center; color: var(--muted); gap: 2vw; }
+    .live { display: inline-flex; gap: .5em; align-items: center; }
+    .live .dot { color: var(--ok); }
+    .live.off .dot { color: var(--bad); }
+    .brand { color: var(--primary); font-weight: 700; }
+
+    .gate { position: fixed; inset: 0; background: #0B1220ee; display: grid; place-items: center; z-index: 5; }
+    .gate button { font: inherit; font-size: 1.6em; font-weight: 700; padding: .8em 1.6em; border-radius: 1em; border: 0;
+      background: var(--primary); color: #0B1220; cursor: pointer; }
+    .gate p { color: var(--muted); text-align: center; margin-top: 1em; }
+    .hidden { display: none !important; }
+    @media (prefers-reduced-motion: reduce) { .call.flash { animation: none; } }
+    @media (max-aspect-ratio: 1/1) {
+      body { overflow: auto; } .screen { height: auto; min-height: 100vh; } .body { grid-template-columns: 1fr; }
+      .call .ticket { font-size: 6em; }
+    }
+  </style>
+</head>
+<body>
+<div class="screen">
+  <header>
+    <div>
+      <h1 id="place">…</h1>
+      <div class="sub" id="today"></div>
+    </div>
+    <div class="clock" id="clock" aria-live="off"></div>
+  </header>
+
+  <div class="body">
+    <section class="panel call" id="callPanel" aria-live="assertive">
+      <div>
+        <p class="label" data-t="nowCalling">يتفضّل الآن</p>
+        <div id="callBody"><div class="idle" data-t="idle">بانتظار أول نداء</div></div>
+      </div>
+    </section>
+
+    <div class="right">
+      <section class="panel">
+        <p class="label" data-t="team">الأطباء</p>
+        <div class="team" id="team"></div>
+      </section>
+      <section class="panel wait-list">
+        <p class="label"><span data-t="waiting">بالانتظار</span> (<span id="waitCount">0</span>)</p>
+        <table>
+          <thead><tr><th data-t="no">الرقم</th><th data-t="name">الاسم</th><th data-t="with">عند</th><th data-t="eta">الدور بعد</th></tr></thead>
+          <tbody id="queue"></tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <span data-t="hint">وصلت؟ امسح الكود اللي على حجزك عند الاستقبال، أو افتح رابط الحجز واضغط «وصلت».</span>
+    <span class="live" id="live"><span class="dot"></span><span id="liveText"></span></span>
+    <span><span data-t="by">بنظام</span> <span class="brand">موعد</span></span>
+  </footer>
+</div>
+
+<div class="gate" id="gate">
+  <div>
+    <button id="enable" type="button" data-t="enable">تشغيل النداء الصوتي</button>
+    <p data-t="gateHint">المتصفح يحتاج ضغطة واحدة قبل ما يسمح بالصوت. بعدها الشاشة تشتغل لوحدها.</p>
+    <p><button id="mute" type="button" style="font-size:1em;background:transparent;color:var(--muted);border:1px solid var(--border)" data-t="silent">بدون صوت</button></p>
+  </div>
+</div>
+
+<script>
+(() => {
+  const slug = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
+  const params = new URLSearchParams(location.search);
+  const lang = params.get('lang') === 'en' ? 'en' : 'ar';
+  const POLL_MS = 3000;
+  const T = {
+    ar: { nowCalling: 'يتفضّل الآن', idle: 'بانتظار أول نداء', team: 'الأطباء', waiting: 'بالانتظار', no: 'الرقم',
+      name: 'الاسم', with: 'عند', eta: 'الدور بعد', hint: 'وصلت؟ امسح الكود اللي على حجزك عند الاستقبال، أو افتح رابط الحجز واضغط «وصلت».',
+      by: 'بنظام', enable: 'تشغيل النداء الصوتي', gateHint: 'المتصفح يحتاج ضغطة واحدة قبل ما يسمح بالصوت. بعدها الشاشة تشتغل لوحدها.',
+      silent: 'بدون صوت', live: 'مباشر', offline: 'غير متصل · آخر تحديث', min: 'د', now: 'الآن', late: 'تأخير', room: 'الغرفة',
+      AVAILABLE: 'متاح', BUSY: 'مع مريض', BREAK: 'استراحة', AWAY: 'غير متواجد', serving: 'يعاين الآن رقم', nobody: 'لا أحد بالانتظار',
+      say: (c) => `رقم ${c.ticketNo}${c.name ? '، ' + c.name : ''}، تفضّل ${c.room ? 'إلى ' + c.room : 'للدخول'}` },
+    en: { nowCalling: 'Now calling', idle: 'Waiting for the first call', team: 'Doctors', waiting: 'Waiting', no: 'No.',
+      name: 'Name', with: 'With', eta: 'Turn in', hint: 'Just arrived? Scan the QR on your booking at reception, or open your booking link and tap "I\'m here".',
+      by: 'Powered by', enable: 'Turn on voice calls', gateHint: 'Browsers need one tap before they allow sound. After that the screen runs by itself.',
+      silent: 'No sound', live: 'Live', offline: 'Offline · last update', min: 'min', now: 'now', late: 'Delay', room: 'Room',
+      AVAILABLE: 'Available', BUSY: 'With a patient', BREAK: 'On a break', AWAY: 'Away', serving: 'Now seeing no.', nobody: 'Nobody waiting',
+      say: (c) => `Number ${c.ticketNo}${c.name ? ', ' + c.name : ''}, please go to ${c.room || 'the room'}` },
+  }[lang];
+
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  document.querySelectorAll('[data-t]').forEach((el) => { if (T[el.dataset.t]) el.textContent = T[el.dataset.t]; });
+  const $ = (id) => document.getElementById(id);
+  const num = (n) => Number(n).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const cacheKey = 'mawid.display.' + slug;
+
+  let tz = 'UTC';
+  let lastSeq = null;
+  let soundOn = false;
+  let lastOk = null;
+
+  // ------------------------------------------------------------------ sound
+  let audio = null;
+  function chime() {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      const t = audio.currentTime;
+      [880, 660].forEach((f, i) => {
+        const o = audio.createOscillator(), g = audio.createGain();
+        o.frequency.value = f; o.type = 'sine';
+        g.gain.setValueAtTime(0.0001, t + i * 0.35);
+        g.gain.exponentialRampToValueAtTime(0.4, t + i * 0.35 + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.35 + 0.6);
+        o.connect(g).connect(audio.destination); o.start(t + i * 0.35); o.stop(t + i * 0.35 + 0.65);
+      });
+    } catch (e) { /* no audio device */ }
+  }
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang === 'ar' ? 'ar-SA' : 'en-US';
+    const voice = speechSynthesis.getVoices().find((v) => v.lang && v.lang.toLowerCase().startsWith(lang));
+    if (voice) u.voice = voice;
+    u.rate = 0.9;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  }
+  function announce(call) {
+    if (!soundOn) return;
+    chime();
+    const text = T.say({ ...call, ticketNo: num(call.ticketNo) });
+    setTimeout(() => speak(text), 900);
+    setTimeout(() => speak(text), 6500); // say it twice, like a person would
+  }
+  function startGate(withSound) {
+    soundOn = withSound;
+    try { localStorage.setItem('mawid.display.sound', withSound ? '1' : '0'); } catch (e) {}
+    if (withSound) { chime(); speechSynthesis && speechSynthesis.getVoices(); }
+    $('gate').classList.add('hidden');
+  }
+  $('enable').onclick = () => startGate(true);
+  $('mute').onclick = () => startGate(false);
+
+  // ------------------------------------------------------------------ render
+  function render(d, fresh) {
+    tz = d.place.timezone;
+    $('place').textContent = lang === 'ar' ? d.place.nameAr : d.place.nameEn;
+    document.title = (lang === 'ar' ? d.place.nameAr : d.place.nameEn) + ' · ' + T.waiting;
+
+    const c = d.lastCall;
+    if (c && c.ticketNo != null) {
+      $('callBody').innerHTML = `<div class="ticket">${num(c.ticketNo)}</div>
+        <div class="who">${esc(c.name)}</div>
+        ${c.room ? `<div class="room">${esc(c.room)}</div>` : ''}
+        ${c.staffName ? `<div class="label" style="margin-top:.8em">${esc(c.staffName)}</div>` : ''}`;
+    } else {
+      $('callBody').innerHTML = `<div class="idle">${T.idle}</div>`;
+    }
+    if (fresh && c && c.seq !== lastSeq) {
+      const isNew = lastSeq !== null || (Date.now() - Date.parse(c.at) < 20000);
+      lastSeq = c.seq;
+      if (isNew) {
+        const p = $('callPanel'); p.classList.remove('flash'); void p.offsetWidth; p.classList.add('flash');
+        announce(c);
+      }
+    } else if (c && lastSeq === null) {
+      lastSeq = c.seq;
+    }
+
+    $('team').innerHTML = d.staff.map((s) => `<div class="doc">
+        <div class="n">${esc(s.name)}</div>
+        <div class="r">${esc(s.room || (lang === 'ar' ? s.titleAr : s.titleEn) || '')}</div>
+        <div class="state ${s.presence}"><span class="dot"></span>${T[s.presence] || s.presence}</div>
+        ${s.nowServingTicket != null ? `<div class="r">${T.serving} ${num(s.nowServingTicket)}</div>` : ''}
+      </div>`).join('');
+
+    $('waitCount').textContent = num(d.waiting.length);
+    $('queue').innerHTML = d.waiting.length === 0
+      ? `<tr><td colspan="4" class="idle" style="font-size:1em">${T.nobody}</td></tr>`
+      : d.waiting.slice(0, 9).map((w) => `<tr>
+          <td class="t">${num(w.ticketNo)}</td>
+          <td>${esc(w.name)}</td>
+          <td>${esc(w.room || w.staffName || '')}</td>
+          <td class="eta">${w.etaMin <= 1 ? T.now : '~ ' + num(w.etaMin) + ' ' + T.min}
+            ${w.delayMin >= 5 ? `<span class="late">${T.late} ${num(w.delayMin)} ${T.min}</span>` : ''}</td>
+        </tr>`).join('');
+  }
+
+  function setLive(ok) {
+    const el = $('live');
+    el.classList.toggle('off', !ok);
+    $('liveText').textContent = ok ? T.live
+      : `${T.offline} ${lastOk ? new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-GB', { hour: 'numeric', minute: '2-digit', timeZone: tz }).format(lastOk) : '—'}`;
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch(`/api/v1/public/places/${encodeURIComponent(slug)}/display`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(res.status);
+      const d = await res.json();
+      lastOk = new Date();
+      try { localStorage.setItem(cacheKey, JSON.stringify(d)); } catch (e) {}
+      render(d, true);
+      setLive(true);
+    } catch (e) {
+      setLive(false); // keep showing the last screen; the desk keeps working and we catch up when back
+    } finally {
+      setTimeout(poll, POLL_MS);
+    }
+  }
+
+  function tick() {
+    const now = new Date();
+    try {
+      $('clock').textContent = new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-GB', { hour: 'numeric', minute: '2-digit', timeZone: tz }).format(now);
+      $('today').textContent = new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz }).format(now);
+    } catch (e) {}
+  }
+
+  try {
+    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+    if (cached) render(cached, false);
+    const pref = localStorage.getItem('mawid.display.sound');
+    if (pref === '0') startGate(false);
+  } catch (e) {}
+  setInterval(tick, 1000); tick();
+  poll();
+})();
+</script>
+</body>
+</html>
