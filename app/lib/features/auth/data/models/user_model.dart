@@ -6,11 +6,17 @@ class UserModel {
 
   final Map<String, dynamic> json;
 
+  static String roleCode(UserRole role) => switch (role) {
+        UserRole.owner => 'OWNER',
+        UserRole.reception => 'RECEPTION',
+        UserRole.customer => 'CUSTOMER',
+      };
+
   factory UserModel.fromEntity(AppUser u) => UserModel({
         'id': int.tryParse(u.id) ?? u.id,
         'phone': u.phone,
         'name': u.name,
-        'role': u.role == UserRole.owner ? 'OWNER' : 'CUSTOMER',
+        'role': roleCode(u.role),
         'placeId': u.placeId == null ? null : (int.tryParse(u.placeId!) ?? u.placeId),
         'lang': u.lang,
       });
@@ -19,7 +25,11 @@ class UserModel {
         id: json['id'].toString(),
         phone: json['phone'] as String,
         name: json['name'] as String?,
-        role: json['role'] == 'OWNER' ? UserRole.owner : UserRole.customer,
+        role: switch (json['role']) {
+          'OWNER' => UserRole.owner,
+          'RECEPTION' => UserRole.reception,
+          _ => UserRole.customer,
+        },
         placeId: json['placeId']?.toString(),
         lang: (json['lang'] as String?) ?? 'ar',
       );

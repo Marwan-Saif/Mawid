@@ -1,5 +1,5 @@
 name: mawid
-description: "Mawid (موعد): bilingual booking app for clinics and salons. Flutter, Clean Architecture, BLoC."
+description: "Mawid (موعد): bilingual booking and front-desk app for clinics and salons (QR check-in, live waiting room, invoices, offline). Flutter, Clean Architecture, BLoC."
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -32,6 +32,11 @@ dependencies:
   # UI
   google_fonts: ^6.2.1
   url_launcher: ^6.3.1
+
+  # Front desk: the customer's QR, scanning it at reception, and voice calls on the waiting screen
+  qr_flutter: ^4.1.0
+  mobile_scanner: ">=6.0.0 <8.0.0"
+  flutter_tts: ^4.2.0
 
 dev_dependencies:
   flutter_test:

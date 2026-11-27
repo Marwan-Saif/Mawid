@@ -7,6 +7,7 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/launch.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../../core/widgets/check_in_qr.dart';
 import '../../domain/entities/booking.dart';
 
 class BookingConfirmedPage extends StatelessWidget {
@@ -83,6 +84,10 @@ class BookingConfirmedPage extends StatelessWidget {
                   ],
                 ),
               ),
+              if (booking.checkInCode != null) ...[
+                const SizedBox(height: AppSpace.lg),
+                CheckInQr(booking: booking, size: 144),
+              ],
               const SizedBox(height: AppSpace.lg),
               Row(
                 children: [

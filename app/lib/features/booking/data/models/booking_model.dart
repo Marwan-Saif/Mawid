@@ -8,6 +8,7 @@ class BookingModel {
   static const _statuses = {
     'PENDING': BookingStatus.pending,
     'CONFIRMED': BookingStatus.confirmed,
+    'ARRIVED': BookingStatus.arrived,
     'IN_PROGRESS': BookingStatus.inProgress,
     'COMPLETED': BookingStatus.completed,
     'CANCELLED': BookingStatus.cancelled,
@@ -21,6 +22,7 @@ class BookingModel {
   static BookingSource source(String? value) => switch (value) {
         'WEB' => BookingSource.web,
         'MANUAL' => BookingSource.manual,
+        'WALK_IN' => BookingSource.walkIn,
         _ => BookingSource.app,
       };
 
@@ -47,7 +49,16 @@ class BookingModel {
         source: source(j['source'] as String?),
         createdAt: DateTime.parse(j['createdAt'] as String).toUtc(),
         note: j['note'] as String?,
+        checkInCode: j['checkInCode'] as String?,
+        ticketNo: (j['ticketNo'] as num?)?.toInt(),
+        checkedInAt: _time(j['checkedInAt']),
+        calledAt: _time(j['calledAt']),
+        room: j['room'] as String?,
+        startedAt: _time(j['startedAt']),
+        finishedAt: _time(j['finishedAt']),
       );
+
+  static DateTime? _time(Object? v) => v is String ? DateTime.parse(v).toUtc() : null;
 
   /// Request body for POST /bookings. Ids go back as numbers when they are numeric.
   static Map<String, dynamic> requestJson(BookingRequest r) => {

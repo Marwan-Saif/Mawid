@@ -37,7 +37,13 @@ class ProfilePage extends StatelessWidget {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(user?.name ?? '—', style: text.titleMedium),
                   Text(user?.phone ?? '', style: text.bodyMedium, textDirection: TextDirection.ltr),
-                  Text(user?.isOwner == true ? l10n.roleOwner : l10n.roleCustomer, style: text.bodyMedium),
+                  Text(
+                      user?.isOwner == true
+                          ? l10n.roleOwner
+                          : user?.isReception == true
+                              ? l10n.roleReception
+                              : l10n.roleCustomer,
+                      style: text.bodyMedium),
                 ]),
               ),
             ]),

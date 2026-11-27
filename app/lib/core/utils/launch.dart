@@ -13,3 +13,6 @@ Future<bool> openDirections(String query) => launchUrl(
     );
 
 Future<bool> callPhone(String phone) => launchUrl(Uri(scheme: 'tel', path: phone));
+
+/// Opens a web page in the browser (e.g. the printable invoice).
+Future<bool> openLink(String url) => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);

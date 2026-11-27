@@ -11,6 +11,9 @@ class AppConfig {
   static const String _backend = String.fromEnvironment('BACKEND', defaultValue: 'fake');
   static const String apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://10.0.2.2:8080');
 
+  /// Public address customers open (check-in links in QR codes). Defaults to the API's.
+  static const String publicUrl = String.fromEnvironment('PUBLIC_URL', defaultValue: apiUrl);
+
   /// Shows "Try as customer / Try as owner" on the welcome screen.
   static const bool demoMode = bool.fromEnvironment('DEMO', defaultValue: true);
 

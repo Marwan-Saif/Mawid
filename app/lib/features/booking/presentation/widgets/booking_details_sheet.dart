@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/launch.dart';
+import '../../../../core/widgets/check_in_qr.dart';
 import '../../../../core/widgets/state_views.dart';
 import '../../../../core/widgets/status_chip.dart';
 import '../../../../injection_container.dart';
@@ -74,7 +75,7 @@ class _BookingDetailsSheetState extends State<_BookingDetailsSheet> {
     final lang = l10n.localeName;
     final canChange = b.canChange(DateTime.now());
 
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(AppSpace.xl, 0, AppSpace.xl, AppSpace.xl),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -90,6 +91,10 @@ class _BookingDetailsSheetState extends State<_BookingDetailsSheet> {
           _line(context, Icons.event_outlined, fmt.dateTime(b.startAt, b.placeTimezone)),
           _line(context, Icons.person_outline, b.staffName),
           _line(context, Icons.payments_outlined, fmt.money(b.price, b.currency)),
+          if (b.status.isActive && b.checkInCode != null) ...[
+            const SizedBox(height: AppSpace.lg),
+            CheckInQr(booking: b),
+          ],
           const SizedBox(height: AppSpace.lg),
           if (b.status.isActive && !canChange)
             Padding(

@@ -61,8 +61,11 @@ class Fmt {
     final symbol = switch (currency) {
       'AED' => isArabic ? 'د.إ' : 'AED',
       'EGP' => isArabic ? 'ج.م' : 'EGP',
+      'JOD' => isArabic ? 'د.أ' : 'JOD',
+      'SAR' => isArabic ? 'ر.س' : 'SAR',
       _ => currency,
     };
-    return '${number(value)} $symbol';
+    final whole = value == value.roundToDouble();
+    return '${number(value, decimals: whole ? 0 : 2)} $symbol'.trim();
   }
 }

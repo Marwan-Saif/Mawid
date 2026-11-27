@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
-enum UserRole { customer, owner }
+/// Customer books; owner runs the place; reception runs the front desk of one place.
+enum UserRole { customer, owner, reception }
 
 class AppUser extends Equatable {
   const AppUser({
@@ -22,6 +23,11 @@ class AppUser extends Equatable {
   final String lang;
 
   bool get isOwner => role == UserRole.owner;
+
+  bool get isReception => role == UserRole.reception;
+
+  /// Works at a place (owner or front desk): sees the desk, not the customer app.
+  bool get isStaff => isOwner || isReception;
 
   @override
   List<Object?> get props => [id, phone, name, role, placeId, lang];

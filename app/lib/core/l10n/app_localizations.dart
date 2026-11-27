@@ -28,6 +28,7 @@ abstract class AppLocalizations {
   String get or;
   String get tryAsCustomer;
   String get tryAsOwner;
+  String get tryAsReception;
   String get demoHint;
   String get otpTitle;
   String otpSentTo(String phone);
@@ -43,6 +44,7 @@ abstract class AppLocalizations {
   String get navProfile;
   String get navSchedule;
   String get navServices;
+  String get navDesk;
 
   // ---------------------------------------------------------------- home & places
   String get goodMorning;
@@ -121,6 +123,9 @@ abstract class AppLocalizations {
   String get statusCompleted;
   String get statusCancelled;
   String get statusNoShow;
+  String get statusArrived;
+  String get showAtReception;
+  String yourTicket(String n);
 
   // ---------------------------------------------------------------- owner
   String dashboardOf(String place);
@@ -162,6 +167,7 @@ abstract class AppLocalizations {
   String get dataSourceApi;
   String get roleCustomer;
   String get roleOwner;
+  String get roleReception;
 
   // ---------------------------------------------------------------- errors
   String get errSlotTaken;
@@ -198,6 +204,8 @@ class ArStrings extends AppLocalizations {
   @override
   String get tryAsOwner => 'جرّب كصاحب مكان';
   @override
+  String get tryAsReception => 'جرّب كاستقبال عيادة';
+  @override
   String get demoHint => 'نسخة تجريبية: الكود دايمًا 123456';
   @override
   String get otpTitle => 'اكتب الكود';
@@ -224,6 +232,8 @@ class ArStrings extends AppLocalizations {
   String get navSchedule => 'الجدول';
   @override
   String get navServices => 'الخدمات';
+  @override
+  String get navDesk => 'الاستقبال';
 
   @override
   String get goodMorning => 'صباح الخير';
@@ -379,6 +389,12 @@ class ArStrings extends AppLocalizations {
   String get statusCancelled => 'اتلغى';
   @override
   String get statusNoShow => 'محضرش';
+  @override
+  String get statusArrived => 'وصل';
+  @override
+  String get showAtReception => 'أول ما توصل، اعرض الكود ده في الاستقبال';
+  @override
+  String yourTicket(String n) => 'وصلت · رقمك $n';
 
   @override
   String dashboardOf(String place) => 'لوحة التحكم · $place';
@@ -455,6 +471,8 @@ class ArStrings extends AppLocalizations {
   String get roleCustomer => 'عميل';
   @override
   String get roleOwner => 'صاحب مكان';
+  @override
+  String get roleReception => 'الاستقبال';
 
   @override
   String get errSlotTaken => 'الموعد ده لسه اتحجز. اختار وقت تاني.';
@@ -501,6 +519,8 @@ class EnStrings extends AppLocalizations {
   @override
   String get tryAsOwner => 'Try as owner';
   @override
+  String get tryAsReception => 'Try as clinic reception';
+  @override
   String get demoHint => 'Demo build: the code is always 123456';
   @override
   String get otpTitle => 'Enter the code';
@@ -527,6 +547,8 @@ class EnStrings extends AppLocalizations {
   String get navSchedule => 'Schedule';
   @override
   String get navServices => 'Services';
+  @override
+  String get navDesk => 'Front desk';
 
   @override
   String get goodMorning => 'Good morning';
@@ -679,6 +701,12 @@ class EnStrings extends AppLocalizations {
   String get statusCancelled => 'Cancelled';
   @override
   String get statusNoShow => 'No-show';
+  @override
+  String get statusArrived => 'Arrived';
+  @override
+  String get showAtReception => 'When you arrive, show this code at reception';
+  @override
+  String yourTicket(String n) => "You're checked in · your number is $n";
 
   @override
   String dashboardOf(String place) => 'Dashboard · $place';
@@ -756,6 +784,8 @@ class EnStrings extends AppLocalizations {
   String get roleCustomer => 'Customer';
   @override
   String get roleOwner => 'Business owner';
+  @override
+  String get roleReception => 'Front desk';
 
   @override
   String get errSlotTaken => 'That time was just booked. Pick another one.';

@@ -1,18 +1,28 @@
 import 'package:equatable/equatable.dart';
 
-enum BookingStatus { pending, confirmed, inProgress, completed, cancelled, noShow }
+/// [arrived]: checked in at reception (QR or by hand), waiting to be called in.
+enum BookingStatus { pending, confirmed, arrived, inProgress, completed, cancelled, noShow }
 
-enum BookingSource { app, web, manual }
+/// [walkIn]: added at the front desk for someone standing there, queued straight away.
+enum BookingSource { app, web, manual, walkIn }
 
 extension BookingStatusX on BookingStatus {
   /// Statuses that occupy the staff member's time.
   bool get holdsTime =>
       this == BookingStatus.pending ||
       this == BookingStatus.confirmed ||
+      this == BookingStatus.arrived ||
       this == BookingStatus.inProgress ||
       this == BookingStatus.completed;
 
-  bool get isActive => this == BookingStatus.pending || this == BookingStatus.confirmed || this == BookingStatus.inProgress;
+  bool get isActive =>
+      this == BookingStatus.pending ||
+      this == BookingStatus.confirmed ||
+      this == BookingStatus.arrived ||
+      this == BookingStatus.inProgress;
+
+  /// Booked but not here yet.
+  bool get isBooked => this == BookingStatus.pending || this == BookingStatus.confirmed;
 }
 
 class Booking extends Equatable {
@@ -39,6 +49,13 @@ class Booking extends Equatable {
     required this.createdAt,
     this.placeSlug,
     this.note,
+    this.checkInCode,
+    this.ticketNo,
+    this.checkedInAt,
+    this.calledAt,
+    this.room,
+    this.startedAt,
+    this.finishedAt,
   });
 
   final String id;
@@ -68,6 +85,21 @@ class Booking extends Equatable {
   final DateTime createdAt;
   final String? note;
 
+  // ---------------------------------------------------------------- front desk
+
+  /// Shown to the customer as a QR; reception scans it to check them in.
+  final String? checkInCode;
+
+  /// Number on the waiting-room screen, given at check-in.
+  final int? ticketNo;
+  final DateTime? checkedInAt;
+  final DateTime? calledAt;
+
+  /// Room or chair they were called to.
+  final String? room;
+  final DateTime? startedAt;
+  final DateTime? finishedAt;
+
   DateTime get endAt => startAt.add(duration);
 
   String placeName(String lang) => lang == 'ar' ? placeNameAr : placeNameEn;
@@ -75,11 +107,23 @@ class Booking extends Equatable {
 
   /// Customers can cancel or move a booking until 3 hours before it starts.
   bool canChange(DateTime nowUtc) =>
-      status.isActive && status != BookingStatus.inProgress && startAt.difference(nowUtc.toUtc()) >= const Duration(hours: 3);
+      status.isBooked && startAt.difference(nowUtc.toUtc()) >= const Duration(hours: 3);
 
   bool isUpcoming(DateTime nowUtc) => status.isActive && endAt.isAfter(nowUtc.toUtc());
 
-  Booking copyWith({BookingStatus? status, DateTime? startAt, String? staffId, String? staffName}) => Booking(
+  Booking copyWith({
+    BookingStatus? status,
+    DateTime? startAt,
+    String? staffId,
+    String? staffName,
+    int? ticketNo,
+    DateTime? checkedInAt,
+    DateTime? calledAt,
+    String? room,
+    DateTime? startedAt,
+    DateTime? finishedAt,
+  }) =>
+      Booking(
         id: id,
         placeId: placeId,
         placeSlug: placeSlug,
@@ -102,10 +146,17 @@ class Booking extends Equatable {
         source: source,
         createdAt: createdAt,
         note: note,
+        checkInCode: checkInCode,
+        ticketNo: ticketNo ?? this.ticketNo,
+        checkedInAt: checkedInAt ?? this.checkedInAt,
+        calledAt: calledAt ?? this.calledAt,
+        room: room ?? this.room,
+        startedAt: startedAt ?? this.startedAt,
+        finishedAt: finishedAt ?? this.finishedAt,
       );
 
   @override
-  List<Object?> get props => [id, startAt, status, staffId];
+  List<Object?> get props => [id, startAt, status, staffId, ticketNo, calledAt, room];
 }
 
 /// What the customer asks for. [staffId] null = "anyone available".

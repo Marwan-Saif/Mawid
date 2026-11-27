@@ -18,6 +18,7 @@ class StatusChip extends StatelessWidget {
     final (String label, Color fg, Color bg) = switch (status) {
       BookingStatus.pending => (l10n.statusPending, c.warning, c.warningSoft),
       BookingStatus.confirmed => (l10n.statusConfirmed, c.textSecondary, c.taken),
+      BookingStatus.arrived => (l10n.statusArrived, c.warning, c.warningSoft),
       BookingStatus.inProgress => (l10n.statusInProgress, c.onPrimary, c.primary),
       BookingStatus.completed => (l10n.statusCompleted, c.success, c.successSoft),
       BookingStatus.cancelled => (l10n.statusCancelled, c.danger, c.taken),

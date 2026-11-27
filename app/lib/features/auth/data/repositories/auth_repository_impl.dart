@@ -28,7 +28,7 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<Either<Failure, AppUser>> demoLogin(UserRole role) =>
-      guard(() async => _save(await remote.demoLogin(role == UserRole.owner ? 'OWNER' : 'CUSTOMER')));
+      guard(() async => _save(await remote.demoLogin(UserModel.roleCode(role))));
 
   @override
   AppUser? savedUser() {

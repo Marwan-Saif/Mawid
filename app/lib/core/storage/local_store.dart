@@ -2,7 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Small key-value store for the session and the chosen language.
+/// Small key-value store for the session, the chosen language, and the front desk's offline
+/// copy (last board + queued changes).
 class LocalStore {
   LocalStore(this._prefs);
 
@@ -37,4 +38,18 @@ class LocalStore {
   String? get localeCode => _prefs.getString(_localeKey);
 
   Future<void> saveLocale(String code) => _prefs.setString(_localeKey, code);
+
+  /// JSON under [key], or null if missing or unreadable.
+  Object? readJson(String key) {
+    final raw = _prefs.getString(key);
+    if (raw == null) return null;
+    try {
+      return jsonDecode(raw);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  Future<void> writeJson(String key, Object? value) =>
+      value == null ? _prefs.remove(key) : _prefs.setString(key, jsonEncode(value));
 }
