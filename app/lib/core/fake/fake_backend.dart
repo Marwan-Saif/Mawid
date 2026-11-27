@@ -1,10 +1,15 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../features/booking/domain/services/slot_calculator.dart';
+import '../../features/desk/domain/services/display_names.dart';
+import '../../features/desk/domain/services/queue_estimator.dart';
 import '../error/exceptions.dart';
 import '../session/session.dart';
+
+part 'fake_desk.dart';
 
 /// An in-memory copy of the Mawid API, speaking the same JSON.
 ///
@@ -25,6 +30,7 @@ class FakeBackend {
 
   static const demoCustomerPhone = '+971500000001';
   static const demoOwnerPhone = '+971500000002';
+  static const demoReceptionPhone = '+962790000003';
   static const demoCode = '123456';
 
   final _places = <int, _Place>{};
@@ -33,6 +39,11 @@ class FakeBackend {
   final _reviews = <_Review>[];
   final _users = <int, _User>{};
   final _bookings = <int, _Booking>{};
+  final _invoices = <int, _Invoice>{};
+  final _audit = <_Audit>[];
+
+  /// Demo switch: pretend the network is down for the front desk, to show its offline mode.
+  bool offline = false;
 
   /// "staffId|unitStartMillis" → bookingId. The fake twin of the slot_locks unique index.
   final _locks = <String, int>{};
@@ -73,7 +84,11 @@ class FakeBackend {
       });
 
   Future<Map<String, dynamic>> demoLogin(String role) => _delay(() {
-        final phone = role == 'OWNER' ? demoOwnerPhone : demoCustomerPhone;
+        final phone = switch (role) {
+          'OWNER' => demoOwnerPhone,
+          'RECEPTION' => demoReceptionPhone,
+          _ => demoCustomerPhone,
+        };
         return _session(_users.values.firstWhere((u) => u.phone == phone));
       });
 
@@ -176,7 +191,7 @@ class FakeBackend {
   Future<Map<String, dynamic>> cancelBooking(int id) => _delay(() {
         final b = _booking(id);
         final asOwner = _authorize(b);
-        if (!_holdsTime(b.status) || b.status == 'COMPLETED') {
+        if (!_holdsTime(b.status) || b.status == 'COMPLETED' || b.status == 'IN_PROGRESS') {
           throw const ServerException('NOT_CANCELLABLE', null, 409);
         }
         if (!asOwner && !SlotCalculator.customerCanChange(b.startAt, _nowUtc)) {
@@ -190,7 +205,7 @@ class FakeBackend {
   Future<Map<String, dynamic>> rescheduleBooking(int id, DateTime startAt, {int? staffId}) => _delay(() {
         final b = _booking(id);
         final asOwner = _authorize(b);
-        if (!_holdsTime(b.status) || b.status == 'COMPLETED') {
+        if (!_holdsTime(b.status) || b.status == 'COMPLETED' || b.status == 'IN_PROGRESS') {
           throw const ServerException('NOT_CHANGEABLE', null, 409);
         }
         if (!asOwner && !SlotCalculator.customerCanChange(b.startAt, _nowUtc)) {
@@ -198,7 +213,7 @@ class FakeBackend {
         }
         final p = _place(b.placeId);
         final s = _serviceOf(p, b.serviceId);
-        _validateTime(p, b.durationMin, startAt.toUtc(), system: false);
+        _validateTime(p, b.durationMin, startAt.toUtc(), trusted: false);
         final oldLocks = _unlock(b);
         try {
           final chosen = _firstFree(_candidates(p, s, staffId), p, startAt.toUtc(), b.durationMin);
@@ -309,12 +324,13 @@ class FakeBackend {
     String? note,
     bool owner = false,
     bool system = false,
+    bool desk = false,
     String status = 'CONFIRMED',
   }) {
     final p = _place(placeId);
     final s = _serviceOf(p, serviceId);
     if (!system && !s.active) throw const ServerException('SERVICE_INACTIVE', null, 400);
-    _validateTime(p, s.durationMin, startAt, system: system);
+    _validateTime(p, s.durationMin, startAt, trusted: system || desk);
     final chosen = _firstFree(_candidates(p, s, staffId), p, startAt, s.durationMin);
     final b = _Booking(
       id: _nextId++,
@@ -330,6 +346,7 @@ class FakeBackend {
       source: source,
       note: note,
       createdAt: _nowUtc,
+      checkInCode: _newCode(),
     );
     _bookings[b.id] = b;
     _lock(b);
@@ -337,12 +354,13 @@ class FakeBackend {
     return b;
   }
 
-  void _validateTime(_Place p, int durationMin, DateTime start, {required bool system}) {
+  /// [trusted]: the seed or reception adding a walk-in "now" — no past or working-hours checks.
+  void _validateTime(_Place p, int durationMin, DateTime start, {required bool trusted}) {
     if (start.millisecondsSinceEpoch % (SlotCalculator.unitMinutes * 60000) != 0) {
       throw const ServerException('SLOT_NOT_ALIGNED', null, 400);
     }
-    if (!system && !start.isAfter(_nowUtc)) throw const ServerException('SLOT_IN_PAST', null, 400);
-    if (!SlotCalculator.fitsWorkingHours(start, durationMin, p.timezone, p.hours)) {
+    if (!trusted && !start.isAfter(_nowUtc)) throw const ServerException('SLOT_IN_PAST', null, 400);
+    if (!trusted && !SlotCalculator.fitsWorkingHours(start, durationMin, p.timezone, p.hours)) {
       throw const ServerException('OUTSIDE_WORKING_HOURS', null, 400);
     }
   }
@@ -390,7 +408,7 @@ class FakeBackend {
 
   bool _authorize(_Booking b) {
     final me = _users[_currentUserId()]!;
-    if (me.role == 'OWNER' && me.placeId == b.placeId) return true;
+    if ((me.role == 'OWNER' || me.role == 'RECEPTION') && me.placeId == b.placeId) return true;
     if (b.customerId == me.id) return false;
     throw const ServerException('FORBIDDEN', null, 403);
   }
@@ -402,7 +420,11 @@ class FakeBackend {
   }
 
   static bool _holdsTime(String status) =>
-      status == 'PENDING' || status == 'CONFIRMED' || status == 'IN_PROGRESS' || status == 'COMPLETED';
+      status == 'PENDING' ||
+      status == 'CONFIRMED' ||
+      status == 'ARRIVED' ||
+      status == 'IN_PROGRESS' ||
+      status == 'COMPLETED';
 
   _Place _place(int id) => _places[id] ?? (throw const ServerException('NOT_FOUND', 'Place', 404));
 
@@ -443,9 +465,15 @@ class FakeBackend {
       'source': b.source,
       'note': b.note,
       'createdAt': b.createdAt.toIso8601String(),
-      'canChange': _holdsTime(b.status) &&
-          b.status != 'COMPLETED' &&
+      'canChange': (b.status == 'PENDING' || b.status == 'CONFIRMED') &&
           SlotCalculator.customerCanChange(b.startAt, _nowUtc),
+      'checkInCode': b.checkInCode,
+      'ticketNo': b.ticketNo,
+      'checkedInAt': b.checkedInAt?.toIso8601String(),
+      'calledAt': b.calledAt?.toIso8601String(),
+      'room': b.room,
+      'startedAt': b.startedAt?.toIso8601String(),
+      'finishedAt': b.finishedAt?.toIso8601String(),
     };
   }
 
@@ -466,8 +494,8 @@ class FakeBackend {
   }
 
   _Staff _addStaff(int placeId, String name, String titleAr, String titleEn, Set<int> serviceIds,
-      {Set<int> daysOff = const {}}) {
-    final s = _Staff(_nextId++, placeId, name, titleAr, titleEn, {...serviceIds}, daysOff);
+      {Set<int> daysOff = const {}, String? room}) {
+    final s = _Staff(_nextId++, placeId, name, titleAr, titleEn, {...serviceIds}, daysOff)..room = room;
     _staff[s.id] = s;
     return s;
   }
@@ -489,9 +517,10 @@ class FakeBackend {
     final protein = _addService(lamsa.id, 'بروتين وعلاج', 'Protein treatment', 120, 600);
     final nails = _addService(lamsa.id, 'مانيكير وباديكير', 'Manicure & pedicure', 60, 150);
     final noura = _addStaff(lamsa.id, 'نورا', 'خبيرة شعر', 'Hair specialist',
-        {haircut.id, colour.id, protein.id, nails.id});
+        {haircut.id, colour.id, protein.id, nails.id},
+        room: 'كرسي ١');
     final reem = _addStaff(lamsa.id, 'ريم', 'مصففة شعر', 'Stylist', {haircut.id, nails.id},
-        daysOff: {DateTime.sunday});
+        daysOff: {DateTime.sunday}, room: 'كرسي ٢');
     _review(lamsa.id, 'سارة م.', 5, 'خدمة ممتازة ونورا شاطرة جدًا في الصبغة.', 3);
     _review(lamsa.id, 'Hind A.', 5, 'Booked in seconds, no calls needed. Lovely place.', 9);
     _review(lamsa.id, 'منى ع.', 4, 'المكان نضيف والمواعيد مظبوطة.', 20);
@@ -558,6 +587,8 @@ class FakeBackend {
     if (nextDental != null) _trySeed(smile, checkup, drSara, ahmed, nextDental, 'CONFIRMED');
     _trySeed(lamsa, haircut, null, ahmed, at(dubai, 3, 17, 0), 'CONFIRMED');
     _trySeed(lamsa, haircut, reem, ahmed, at(dubai, -7, 17, 0), 'COMPLETED');
+
+    _seedNakheel(ahmed);
   }
 
   void _trySeed(_Place p, _Service s, _Staff? st, _User c, DateTime start, String status) {
@@ -607,6 +638,8 @@ class _Place {
   _Place(this.id, this.slug, this.nameAr, this.nameEn, this.category, this.areaAr, this.areaEn, this.rating,
       this.reviewsCount, this.distanceKm, this.timezone, this.currency, this.phone, this.openMin, this.closeMin,
       this.closedDays);
+
+  int nextInvoiceNo = 1001;
 
   final int id;
   final String slug, nameAr, nameEn, category, areaAr, areaEn, timezone, currency, phone;
@@ -663,6 +696,16 @@ class _Staff {
   final String name, titleAr, titleEn;
   final Set<int> serviceIds;
   final Set<int> daysOff;
+  String? room;
+  String presence = 'AVAILABLE';
+  DateTime? presenceSince;
+
+  void setPresence(String p, DateTime at) {
+    if (presence != p) {
+      presence = p;
+      presenceSince = at;
+    }
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -723,6 +766,7 @@ class _Booking {
     required this.status,
     required this.source,
     required this.createdAt,
+    required this.checkInCode,
     this.note,
   });
 
@@ -734,6 +778,11 @@ class _Booking {
   String status;
   final String? note;
   final DateTime createdAt;
+  final String checkInCode;
+  int? ticketNo;
+  DateTime? checkedInAt, calledAt, startedAt, finishedAt;
+  int callCount = 0;
+  String? room;
 
   DateTime get endAt => startAt.add(Duration(minutes: durationMin));
 }
