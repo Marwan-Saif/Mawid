@@ -86,6 +86,25 @@ A "does anything overlap?" query plus insert has a race: two transactions can bo
 
 The cost is a few extra rows per booking (3 for a 45-minute service), which is nothing at clinic/salon scale.
 
+## Front desk (`desk` feature, `com.mawid.desk`, `invoice`, `audit`)
+
+```
+Flutter                                   Spring Boot
+features/desk/                            /api/v1/desk/**          (OWNER, RECEPTION)
+  domain/   entities, QueueEstimator,       DeskService            board, check-in, walk-in, call, finish
+            DeskRepository, use cases       InvoiceService         create (clientRef), edit (version), pay, void
+  data/     DeskModels, data sources,       AuditService           append-only log, same transaction
+            Outbox, DeskRepositoryImpl    /api/v1/public/...       waiting screen, self check-in
+  presentation/ DeskCubit, InvoicesCubit,  /w/{slug} /c/{code} /i/{token}   static TV page, check-in page,
+            AuditCubit, WaitingDisplayCubit                          printable invoice (server-rendered)
+```
+
+- **Visit state** lives on the booking: `CONFIRMED → ARRIVED → IN_PROGRESS → COMPLETED` (or `NO_SHOW`), with `ticketNo`, `checkedInAt`, `calledAt`, `room`, `startedAt`, `finishedAt`. `ARRIVED` holds the staff member's time like any active status, so the double-booking rules don't change.
+- **Counters** (ticket number per day, invoice number per place) are taken under `SELECT … FOR UPDATE` on the place row (`PlaceRepository.lockById`), so two desks never hand out the same number.
+- **Idempotency** makes offline replay safe: check-in/call/finish/no-show return the booking as it is when it's already in that state; invoices are found by `(place_id, client_ref)`; paying a paid invoice is a no-op.
+- **Offline (Flutter)**: `DeskRepositoryImpl` caches the last board and invoice list in `LocalStore`, queues safe changes in `Outbox` when the network fails, lays them over the cached board (`pendingSync`), and drains the queue in order before any new change and every 15 s. A change the server refuses is dropped and surfaced in `SyncStatus.rejected`. Editing or voiding an invoice needs the network on purpose (version check).
+- **Public data** is minimal: the waiting screen gets shortened names (`DisplayNames`), ticket numbers and rooms, never phones. The check-in code and the invoice token are unguessable (≈8e14 and ≈1e42 combinations).
+
 ## Time
 
 All instants are stored and sent in UTC. Working hours are wall-clock times at the place; both calculators convert with the place's IANA zone (`Asia/Dubai`, `Africa/Cairo`, which has daylight saving time again since 2023). The app formats every time in the place's zone, so a customer in Cairo booking in Dubai sees Dubai time.

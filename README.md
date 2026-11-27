@@ -1,12 +1,13 @@
 # Mawid · موعد
 
-**Bilingual (Arabic RTL + English) booking app for clinics and salons.**
+**Bilingual (Arabic RTL + English) booking and front-desk system for clinics and salons.**
+From the booking to the invoice: QR check-in, a live waiting-room screen that calls people in out loud, each doctor's status, invoices printed on A4 or a receipt, a log of who changed what, and a desk that keeps working when the internet drops.
 Flutter app with Clean Architecture and BLoC, a Spring Boot API that makes double booking impossible, and a no-install booking link for customers who live on WhatsApp and Instagram.
 
 [![App](https://github.com/Marwan-Saif/Mawid/actions/workflows/app.yml/badge.svg)](https://github.com/Marwan-Saif/Mawid/actions/workflows/app.yml)
 [![Backend](https://github.com/Marwan-Saif/Mawid/actions/workflows/backend.yml/badge.svg)](https://github.com/Marwan-Saif/Mawid/actions/workflows/backend.yml)
 
-**Try it:** [web demo](https://marwan-saif.github.io/Mawid/) (tap *Try as customer* or *Try as owner*, no sign-up) · demo APK from the latest [App workflow run](https://github.com/Marwan-Saif/Mawid/actions/workflows/app.yml)
+**Try it:** [web demo](https://marwan-saif.github.io/Mawid/) (tap *Try as customer*, *Try as owner* or *Try as clinic reception*, no sign-up) · demo APK from the latest [App workflow run](https://github.com/Marwan-Saif/Mawid/actions/workflows/app.yml)
 
 ---
 
@@ -23,6 +24,28 @@ Clinics and salons in Egypt and the Gulf still book by phone and WhatsApp. Two r
 | Confirmation, reminder an hour before | Add walk-in and phone bookings that use the same rules |
 | Cancel or move up to 3 hours before | Add and edit services, hide them, change prices |
 | Arabic (RTL) and English, switch any time | A booking link for the Instagram bio: customers book with name + phone, no app |
+| A QR on every booking for check-in, and their place in the queue | The front desk: queue, waiting screen, invoices, audit log |
+
+## The front desk: one visit, start to finish
+
+Follow Abu Sami at Al Nakheel Clinic (the seeded demo, alive at whatever time you open it):
+
+```
+ booked ──► arrives ──────────► waits ─────────────► called in ──────► done ──────► invoice
+            QR at reception     screen: "no. 4,       voice: "رقم ٤،     doctor      #1042: 20 + 5 = 25
+            or "I'm here" link  ~10 min, 10 late"     أبو سامي، غرفة ١"   free again  A4 / receipt + QR
+```
+
+| Piece | How it works |
+| --- | --- |
+| **QR check-in** | Every booking has a 10-character code shown as a QR in the customer's app. Reception scans it (or types it); the customer can also open `/c/{code}` (in the reminder message) and tap *I'm here* from an hour before. Scanning twice is harmless. |
+| **Waiting-room screen** | `/w/{slug}` on any TV browser (or the app's own screen on a tablet): who's being called, each doctor's status, the queue with expected wait and delay. Names are shortened for a public screen ("يوسف ن."). New calls flash and are spoken twice after a chime. |
+| **Queue times** | `QueueEstimator` (same code in Java and Dart, same tests): whoever is in the room finishes at start + duration, people go in by booked time, never early; someone booked but 15+ minutes late doesn't hold up the people behind them. |
+| **Doctor / stylist status** | Available, with a patient, on a break, away. Calling someone in makes the doctor busy; finishing frees them. A second call while busy is refused (`STAFF_BUSY`). |
+| **Invoices** | Numbered per place with no gaps (row lock on the place), lines from the service list or free text, discount, cash/card/transfer, void with a reason. Prints as A4 or an 80 mm receipt from `/i/{token}`, with a QR back to the live invoice so a printout can be verified. |
+| **Audit log** | Every desk change writes who/what/when in the same transaction: *"Sara (reception) edited invoice #1042 at 11:12: total 20 → 25, + blood pressure check"*. Edits use the invoice version, so two desks can't overwrite each other (`STALE_INVOICE`). |
+| **Works offline** | The desk keeps the last board on the device. Check-in, call, finish, no-show, status changes, new invoices and payments go to an on-device outbox and show right away; they're sent in order when the network is back. Each is idempotent on the server (an invoice carries a `clientRef`), and anything the server refuses later is reported, not lost. The demo has a *Try offline* switch. |
+| **Roles** | Owner (everything), reception (the desk only, no prices or services setup), customer. |
 
 ## The interesting part: no double booking, even under load
 
@@ -125,7 +148,8 @@ Replace `LoggingSmsSender` and `LoggingNotifier` with an SMS provider or the Wha
 
 - WhatsApp Business API reminders and confirmations
 - Deposits to cut no-shows
-- Owner web dashboard for the reception desk
+- Live updates over SSE/WebSocket instead of polling (the screen polls every 3 s, the desk every 10 s)
+- Direct printing to thermal printers (ESC/POS) from the desk
 - Push notifications (FCM) for new bookings on the API backend
 
 ---
