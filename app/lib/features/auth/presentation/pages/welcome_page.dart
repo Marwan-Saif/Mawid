@@ -118,6 +118,13 @@ class _WelcomePageState extends State<WelcomePage> {
                     onPressed: () => context.read<LoginCubit>().tryDemo(UserRole.owner),
                   ),
                   const SizedBox(height: AppSpace.md),
+                  _DemoButton(
+                    icon: Icons.qr_code_scanner,
+                    label: l10n.tryAsReception,
+                    busy: state.isLoading && state.busyRole == UserRole.reception,
+                    onPressed: () => context.read<LoginCubit>().tryDemo(UserRole.reception),
+                  ),
+                  const SizedBox(height: AppSpace.md),
                   Text(l10n.demoHint, style: text.bodyMedium, textAlign: TextAlign.center),
                 ],
               ],

@@ -14,6 +14,13 @@ import '../../features/booking/presentation/cubit/my_bookings_cubit.dart';
 import '../../features/booking/presentation/pages/booking_confirmed_page.dart';
 import '../../features/booking/presentation/pages/my_bookings_page.dart';
 import '../../features/booking/presentation/pages/select_slot_page.dart';
+import '../../features/desk/domain/repositories/desk_repository.dart';
+import '../../features/desk/presentation/cubit/audit_cubit.dart';
+import '../../features/desk/presentation/cubit/desk_cubit.dart';
+import '../../features/desk/presentation/cubit/invoices_cubit.dart';
+import '../../features/desk/presentation/cubit/waiting_display_cubit.dart';
+import '../../features/desk/presentation/pages/desk_page.dart';
+import '../../features/desk/presentation/pages/waiting_display_page.dart';
 import '../../features/owner/presentation/cubit/owner_dashboard_cubit.dart';
 import '../../features/owner/presentation/cubit/owner_services_cubit.dart';
 import '../../features/owner/presentation/pages/owner_dashboard_page.dart';
@@ -31,7 +38,8 @@ import '../l10n/app_localizations.dart';
 
 final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
-/// Routes and guards. Signed-out users only see /welcome; owners land on /owner, customers on /home.
+/// Routes and guards. Signed-out users only see /welcome (and the public waiting screen);
+/// owners land on /owner, reception on /desk, customers on /home.
 GoRouter buildRouter(SessionCubit session) {
   return GoRouter(
     navigatorKey: _rootKey,
@@ -40,12 +48,17 @@ GoRouter buildRouter(SessionCubit session) {
     redirect: (context, state) {
       final s = session.state;
       final loc = state.matchedLocation;
+      if (loc.startsWith('/display/')) return null; // the waiting-room TV needs no sign-in
       final inWelcome = loc.startsWith('/welcome');
       if (s.status != SessionStatus.signedIn) return inWelcome ? null : '/welcome';
-      final isOwner = s.user!.isOwner;
-      if (inWelcome) return isOwner ? '/owner' : '/home';
-      if (isOwner && !loc.startsWith('/owner')) return '/owner';
-      if (!isOwner && loc.startsWith('/owner')) return '/home';
+      final user = s.user!;
+      final home = user.isOwner ? '/owner' : (user.isReception ? '/desk' : '/home');
+      if (inWelcome) return home;
+      final ownerArea = loc.startsWith('/owner');
+      final deskArea = loc.startsWith('/desk');
+      if (user.isOwner && !ownerArea) return '/owner';
+      if (user.isReception && !deskArea) return '/desk';
+      if (!user.isStaff && (ownerArea || deskArea)) return '/home';
       return null;
     },
     routes: [
@@ -150,6 +163,9 @@ GoRouter buildRouter(SessionCubit session) {
             ),
           ]),
           StatefulShellBranch(routes: [
+            GoRoute(path: '/owner/desk', builder: (_, __) => _desk()),
+          ]),
+          StatefulShellBranch(routes: [
             GoRoute(
               path: '/owner/services',
               builder: (_, __) =>
@@ -161,9 +177,38 @@ GoRouter buildRouter(SessionCubit session) {
           ]),
         ],
       ),
+
+      // ------------------------------------------------------------ front desk (reception)
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, shell) => _DeskShell(shell: shell),
+        branches: [
+          StatefulShellBranch(routes: [GoRoute(path: '/desk', builder: (_, __) => _desk())]),
+          StatefulShellBranch(routes: [GoRoute(path: '/desk/profile', builder: (_, __) => const ProfilePage())]),
+        ],
+      ),
+
+      // ------------------------------------------------------------ waiting-room screen (public)
+      GoRoute(
+        path: '/display/:slug',
+        parentNavigatorKey: _rootKey,
+        builder: (_, state) => BlocProvider(
+          create: (_) => WaitingDisplayCubit(sl<DeskRepository>(), state.pathParameters['slug']!)..start(),
+          child: const WaitingDisplayPage(),
+        ),
+      ),
     ],
   );
 }
+
+/// Queue, invoices and log, with their state, for the owner's and reception's desk tab.
+Widget _desk() => MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (_) => sl<DeskCubit>()..load()),
+        BlocProvider(create: (_) => sl<InvoicesCubit>()),
+        BlocProvider(create: (_) => sl<AuditCubit>()..load()),
+      ],
+      child: DeskPage(repository: sl<DeskRepository>()),
+    );
 
 class _CustomerShell extends StatelessWidget {
   const _CustomerShell({required this.shell});
@@ -212,9 +257,35 @@ class _OwnerShell extends StatelessWidget {
               selectedIcon: const Icon(Icons.calendar_today),
               label: l10n.navSchedule),
           NavigationDestination(
+              icon: const Icon(Icons.groups_outlined), selectedIcon: const Icon(Icons.groups), label: l10n.navDesk),
+          NavigationDestination(
               icon: const Icon(Icons.design_services_outlined),
               selectedIcon: const Icon(Icons.design_services),
               label: l10n.navServices),
+          NavigationDestination(
+              icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: l10n.navProfile),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeskShell extends StatelessWidget {
+  const _DeskShell({required this.shell});
+
+  final StatefulNavigationShell shell;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Scaffold(
+      body: shell,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: shell.currentIndex,
+        onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
+        destinations: [
+          NavigationDestination(
+              icon: const Icon(Icons.groups_outlined), selectedIcon: const Icon(Icons.groups), label: l10n.navDesk),
           NavigationDestination(
               icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: l10n.navProfile),
         ],
